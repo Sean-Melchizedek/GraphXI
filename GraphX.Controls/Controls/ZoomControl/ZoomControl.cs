@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -259,6 +260,11 @@ namespace GraphX.Controls
             }
         }
 
+        //private bool _isDraggingEnabled;
+        //public bool IsDraggingEnabled { 
+        //    get { return _isDraggingEnabled; }
+        //    set { _isDraggingEnabled = value; } 
+        //}
         #endregion
 
         // state variables used during drag and select operations
@@ -279,7 +285,12 @@ namespace GraphX.Controls
                 // if the Tag is ResizeEdge.None, then its a drag operation; otherwise, its a resize
                 if ((ResizeEdge)_viewFinderDisplay.Tag == ResizeEdge.None)
                 {
-                    IsDraggingViewport = true;
+                    // Sean: add check if Dragging is enabled
+                    //if (_isDraggingEnabled)
+                    //{
+                        //Debug.WriteLine("_isDraggingEnabled not working");
+                        IsDraggingViewport = true;
+                    //}
                 }
                 else
                 {
@@ -355,7 +366,7 @@ namespace GraphX.Controls
         private void ViewFinderDisplayEndCapture(object sender, MouseButtonEventArgs e)
         {
             // if a drag or resize is in progress, end it and release capture
-            if (IsDraggingViewport || IsResizingViewport)
+            if ((IsDraggingViewport /*&& _isDraggingEnabled*/) || IsResizingViewport)
             {
                 // call the DragDisplayViewport method to end the operation
                 // and store the current position on the stack
@@ -374,8 +385,11 @@ namespace GraphX.Controls
         {
             // if a drag operation is in progress, update the operation
             if (e.MouseDevice.LeftButton == MouseButtonState.Pressed
-                && (IsDraggingViewport || IsResizingViewport))
+                && ((IsDraggingViewport /*&& IsDraggingEnabled*/)  || IsResizingViewport)//Sean add for config
+                )
             {
+                Debug.WriteLine("_isDraggingEnabled not working, inside ViewFinderDisplayMouseMove");
+
                 var pos = e.GetPosition(_viewFinderDisplay);
                 var delta = pos - _originPoint;
                 if (IsDraggingViewport)
@@ -458,50 +472,53 @@ namespace GraphX.Controls
         #region Drag and resize
         private void DragDisplayViewport(DragDeltaEventArgs e)
         {
-           // UpdateViewFinderDisplayContentBounds();
+            // UpdateViewFinderDisplayContentBounds();
             // get the scale of the view finder display panel, the selection rect, and the VisualBrush rect
+            //if (IsDraggingEnabled)// Sean add for config
+            //{
+                var scale = _viewFinderDisplay.Scale;
+                var viewportRect = _viewFinderDisplay.ViewportRect;
+                var vbRect = _viewFinderDisplay.ContentBounds;
 
-            var scale = _viewFinderDisplay.Scale;
-            var viewportRect = _viewFinderDisplay.ViewportRect;
-            var vbRect = _viewFinderDisplay.ContentBounds;
+                // if the entire content is visible, do nothing
+                if (viewportRect.Contains(vbRect))
+                    return;
 
-            // if the entire content is visible, do nothing
-            if (viewportRect.Contains(vbRect))
-                return;
+                // ensure that we stay within the bounds of the VisualBrush
+                var dx = e.HorizontalChange;
+                var dy = e.VerticalChange;
 
-            // ensure that we stay within the bounds of the VisualBrush
-            var dx = e.HorizontalChange;
-            var dy = e.VerticalChange;
-
-            // check left boundary
-            if (viewportRect.Left < vbRect.Left)
-                dx = Math.Max(0, dx);
-            else if (viewportRect.Left + dx < vbRect.Left)
+                // check left boundary
+                if (viewportRect.Left < vbRect.Left)
+                    dx = Math.Max(0, dx);
+                else if (viewportRect.Left + dx < vbRect.Left)
                     dx = vbRect.Left - viewportRect.Left;
 
-            // check right boundary
-            if (viewportRect.Right > vbRect.Right)
-                dx = Math.Min(0, dx);
-            else if (viewportRect.Right + dx > vbRect.Left + vbRect.Width)
+                // check right boundary
+                if (viewportRect.Right > vbRect.Right)
+                    dx = Math.Min(0, dx);
+                else if (viewportRect.Right + dx > vbRect.Left + vbRect.Width)
                     dx = vbRect.Left + vbRect.Width - viewportRect.Right;
-    
-            // check top boundary
-            if (viewportRect.Top < vbRect.Top)
-                dy = Math.Max(0, dy);
-            else if (viewportRect.Top + dy < vbRect.Top)
+
+                // check top boundary
+                if (viewportRect.Top < vbRect.Top)
+                    dy = Math.Max(0, dy);
+                else if (viewportRect.Top + dy < vbRect.Top)
                     dy = vbRect.Top - viewportRect.Top;
 
-            // check bottom boundary
-            if (viewportRect.Bottom > vbRect.Bottom)
-                dy = Math.Min(0, dy);
-            else if (viewportRect.Bottom + dy > vbRect.Top + vbRect.Height)
+                // check bottom boundary
+                if (viewportRect.Bottom > vbRect.Bottom)
+                    dy = Math.Min(0, dy);
+                else if (viewportRect.Bottom + dy > vbRect.Top + vbRect.Height)
                     dy = vbRect.Top + vbRect.Height - viewportRect.Bottom;
 
-            // call the main OnDrag handler that is used when dragging the content directly
-            OnDrag(new DragDeltaEventArgs(-dx / scale / _viewboxFactor, -dy / scale / _viewboxFactor));
+                // call the main OnDrag handler that is used when dragging the content directly
+                OnDrag(new DragDeltaEventArgs(-dx / scale / _viewboxFactor, -dy / scale / _viewboxFactor));
 
-            // for a drag operation, update the origin with each delta
-            _originPoint = _originPoint + new Vector(dx, dy);
+                // for a drag operation, update the origin with each delta
+                _originPoint = _originPoint + new Vector(dx, dy);
+            //}
+
         }
 
         private void ResizeDisplayViewport(DragDeltaEventArgs e, ResizeEdge relativeTo)
@@ -1323,10 +1340,11 @@ namespace GraphX.Controls
                             _startedAsAreaSelection = true;
                             ModifierMode = ZoomViewModifierMode.ZoomBox;
                         }
-                        else
-                        {
-                            ModifierMode = ZoomViewModifierMode.Pan;
-                        }
+                        // Sean modified here to disable pan action when Modifier mode set to None
+                        //else
+                        //{
+                        //    ModifierMode = ZoomViewModifierMode.Pan;
+                        //}
                     }
                     break;
                 case ModifierKeys.Alt | ModifierKeys.Control:
